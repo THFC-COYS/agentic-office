@@ -1,0 +1,13 @@
+{
+  "name": "agentic-office",
+  "version": "1.0.0",
+  "description": "2D Stardew Valley-style AI agent office — plug in real AI agents and watch them work",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {}
+}

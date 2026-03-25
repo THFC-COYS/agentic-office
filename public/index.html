@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🏢 Agentic Office</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ═══════════════════════════════════════════ TOP BAR -->
+  <header id="topbar">
+    <div class="topbar-left">
+      <span class="logo">🏢</span>
+      <h1>Agentic Office</h1>
+      <span class="tagline">The AI-powered Fortune 500</span>
+    </div>
+    <div class="topbar-right">
+      <div id="api-status-indicator" class="status-dot unconfigured" title="API not configured">●</div>
+      <button class="btn btn-primary" id="add-agent-btn">＋ Add Agent</button>
+      <button class="btn btn-ghost" id="settings-btn">⚙ Settings</button>
+    </div>
+  </header>
+
+  <!-- ═══════════════════════════════════════════ MAIN LAYOUT -->
+  <div id="main-layout">
+
+    <!-- ── Game Canvas ── -->
+    <div id="game-wrap">
+      <canvas id="game-canvas"></canvas>
+      <!-- Tooltip on hover -->
+      <div id="agent-tooltip" class="hidden">
+        <div class="tt-emoji"></div>
+        <div class="tt-info">
+          <div class="tt-name"></div>
+          <div class="tt-company"></div>
+          <div class="tt-role"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Side Panel ── -->
+    <aside id="side-panel">
+
+      <!-- Agent List (default view) -->
+      <div id="panel-list" class="panel-view active">
+        <div class="panel-header">
+          <h2>Active Agents</h2>
+          <span id="agent-count" class="badge">0</span>
+        </div>
+        <div id="agent-list"></div>
+        <div class="panel-footer">
+          <button class="btn btn-outline w-full" id="add-agent-btn-2">＋ Add New Agent</button>
+        </div>
+      </div>
+
+      <!-- Chat View (opens when agent clicked) -->
+      <div id="panel-chat" class="panel-view">
+        <div class="panel-header chat-header">
+          <button id="chat-back-btn" class="btn-icon">← Back</button>
+          <div class="chat-agent-info">
+            <span id="chat-agent-emoji" class="chat-emoji"></span>
+            <div>
+              <div id="chat-agent-name" class="chat-name"></div>
+              <div id="chat-agent-company" class="chat-company"></div>
+            </div>
+          </div>
+          <div id="chat-api-badge" class="api-badge"></div>
+        </div>
+
+        <div id="chat-messages"></div>
+
+        <div id="chat-input-area">
+          <textarea
+            id="chat-input"
+            placeholder="Ask this agent something…"
+            rows="2"
+          ></textarea>
+          <button id="chat-send-btn" class="btn btn-primary">Send ↵</button>
+        </div>
+      </div>
+
+    </aside>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ ADD AGENT MODAL -->
+  <div id="modal-add-agent" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Add Agent to Office</h2>
+        <button class="modal-close" data-modal="modal-add-agent">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <label>Display Name *</label>
+          <input type="text" id="agent-form-name" placeholder="e.g. Finch" />
+        </div>
+        <div class="form-row">
+          <label>Company / Team</label>
+          <input type="text" id="agent-form-company" placeholder="e.g. Uber" />
+        </div>
+        <div class="form-row">
+          <label>Role</label>
+          <input type="text" id="agent-form-role" placeholder="e.g. Financial Data Agent" />
+        </div>
+        <div class="form-row-2col">
+          <div class="form-row">
+            <label>Department</label>
+            <select id="agent-form-dept">
+              <option value="executive">Administration</option>
+              <option value="finance">Enrollment Services</option>
+              <option value="sales">Faculty Development</option>
+              <option value="greg">⭐ Office of Greg</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label>Emoji Icon</label>
+            <div class="emoji-picker-wrap">
+              <input type="text" id="agent-form-emoji" value="🤖" maxlength="2" class="emoji-input" />
+              <div class="emoji-grid">
+                <span>💻</span><span>🚚</span><span>🦾</span><span>📚</span>
+                <span>🔡</span><span>📦</span><span>🧑‍💼</span><span>🚀</span>
+                <span>✍️</span><span>🎵</span><span>🤖</span><span>🏢</span>
+                <span>📊</span><span>💡</span><span>🔍</span><span>⚡</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="form-row">
+          <label>Short Description</label>
+          <input type="text" id="agent-form-desc" placeholder="What does this agent do?" />
+        </div>
+        <hr class="divider" />
+        <h3 class="section-title">🔌 API Connection</h3>
+        <div class="form-row">
+          <label>Provider</label>
+          <select id="agent-form-provider">
+            <option value="claude">Claude (Anthropic)</option>
+            <option value="openai">GPT (OpenAI)</option>
+            <option value="custom">Custom Webhook</option>
+          </select>
+        </div>
+        <div class="form-row" id="api-model-row">
+          <label>Model</label>
+          <input type="text" id="agent-form-model" placeholder="claude-sonnet-4-6" />
+        </div>
+        <div class="form-row">
+          <label>API Key <span class="hint">(stored locally, never sent to our servers)</span></label>
+          <input type="password" id="agent-form-apikey" placeholder="sk-ant-..." />
+        </div>
+        <div class="form-row hidden" id="custom-endpoint-row">
+          <label>Endpoint URL</label>
+          <input type="text" id="agent-form-endpoint" placeholder="https://your-agent.example.com/chat" />
+        </div>
+        <div class="form-row">
+          <label>System Prompt</label>
+          <textarea id="agent-form-system" rows="4"
+            placeholder="You are [Name], [Company]'s [role]. You help with..."
+          ></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-modal="modal-add-agent">Cancel</button>
+        <button class="btn btn-primary" id="save-agent-btn">Add to Office</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ EDIT AGENT MODAL -->
+  <div id="modal-edit-agent" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>✏️ Edit Agent</h2>
+        <button class="modal-close" data-modal="modal-edit-agent">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row-2col">
+          <div class="form-row">
+            <label>Display Name *</label>
+            <input type="text" id="edit-agent-name" placeholder="e.g. Registrar" />
+          </div>
+          <div class="form-row">
+            <label>Emoji</label>
+            <input type="text" id="edit-agent-emoji" maxlength="2" class="emoji-input" style="width:60px;text-align:center;font-size:20px;" />
+          </div>
+        </div>
+        <div class="form-row">
+          <label>Company / Team</label>
+          <input type="text" id="edit-agent-company" placeholder="e.g. Enrollment Services" />
+        </div>
+        <div class="form-row">
+          <label>Role <span class="hint">— start typing to see suggestions</span></label>
+          <input type="text" id="edit-agent-role" placeholder="e.g. Enrollment Analytics Agent" autocomplete="off" />
+        </div>
+        <div class="form-row-2col">
+          <div class="form-row">
+            <label>Department</label>
+            <select id="edit-agent-dept">
+              <option value="executive">Administration</option>
+              <option value="finance">Enrollment Services</option>
+              <option value="sales">Faculty Development</option>
+              <option value="greg">⭐ Office of Greg</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label>Provider</label>
+            <select id="edit-agent-provider">
+              <option value="claude">Claude (Anthropic)</option>
+              <option value="openai">GPT (OpenAI)</option>
+              <option value="custom">Custom Webhook</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <label>Description</label>
+          <input type="text" id="edit-agent-desc" placeholder="What does this agent do?" />
+        </div>
+        <div class="form-row">
+          <label>Model</label>
+          <input type="text" id="edit-agent-model" placeholder="claude-sonnet-4-6" />
+        </div>
+        <div class="form-row">
+          <label>API Key</label>
+          <input type="password" id="edit-agent-apikey" placeholder="sk-ant-..." />
+        </div>
+        <div class="form-row">
+          <label>System Prompt</label>
+          <textarea id="edit-agent-system" rows="4" placeholder="You are..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-modal="modal-edit-agent">Cancel</button>
+        <button class="btn btn-primary" id="save-edit-btn">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ SETTINGS MODAL -->
+  <div id="modal-settings" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>⚙ Settings</h2>
+        <button class="modal-close" data-modal="modal-settings">✕</button>
+      </div>
+      <div class="modal-body">
+        <h3 class="section-title">Global API Keys</h3>
+        <p class="hint-text">These keys are used as fallbacks when an agent doesn't have its own key configured. Stored only in your browser's localStorage.</p>
+        <div class="form-row">
+          <label>Anthropic API Key (Claude)</label>
+          <input type="password" id="settings-anthropic-key" placeholder="sk-ant-api03-..." />
+        </div>
+        <div class="form-row">
+          <label>OpenAI API Key</label>
+          <input type="password" id="settings-openai-key" placeholder="sk-..." />
+        </div>
+        <hr class="divider" />
+        <h3 class="section-title">Office Speed</h3>
+        <div class="form-row">
+          <label>Agent Walk Speed</label>
+          <input type="range" id="settings-speed" min="0.3" max="3" step="0.1" value="1" />
+          <span id="settings-speed-label">1×</span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-modal="modal-settings">Cancel</button>
+        <button class="btn btn-primary" id="save-settings-btn">Save Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ SCRIPTS -->
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/renderer.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/main.js"></script>
+
+</body>
+</html>
