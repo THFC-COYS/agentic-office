@@ -173,7 +173,7 @@ function serveStatic(req, res) {
 
 // ── Router ────────────────────────────────────────────────────
 const server = http.createServer(async (req, res) => {
-  const parsed   = url.parse(req.url);
+  const parsed   = new URL(req.url, 'http://localhost');
   req.pathname   = parsed.pathname;
 
   // CORS preflight

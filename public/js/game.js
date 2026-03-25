@@ -89,6 +89,40 @@ const Game = (() => {
   let socialPairs     = new Map();
 
   // ── Init ────────────────────────────────────────────────────
+  // ── Report Clock ─────────────────────────────────────────────
+  let reportStartTime = Date.now();
+
+  function initStateLog(ag) {
+    ag.stateLog = {};
+    Object.values(HB).forEach(s => { ag.stateLog[s] = 0; });
+    ag.stateLogStart = gameTime;  // game-seconds when log started
+  }
+
+  function resetReport() {
+    reportStartTime = Date.now();
+    agents.forEach(ag => initStateLog(ag));
+  }
+
+  function getReport() {
+    const wallMs = Date.now() - reportStartTime;
+    return {
+      generatedAt: new Date().toLocaleString(),
+      wallMs,
+      agents: agents.map(ag => {
+        // Flush current in-progress state
+        const log = { ...ag.stateLog };
+        const elapsed = gameTime - (ag._stateLogLastFlush ?? ag.stateLogStart ?? 0);
+        if (ag.humanState) log[ag.humanState] = (log[ag.humanState] || 0) + elapsed;
+        const total = Object.values(log).reduce((s, v) => s + v, 0) || 1;
+        return {
+          id: ag.id, name: ag.name, company: ag.company,
+          role: ag.role, emoji: ag.emoji, department: ag.department,
+          states: log, totalGameSec: total
+        };
+      })
+    };
+  }
+
   function init(opts = {}) {
     onAgentClick  = opts.onAgentClick  || (() => {});
     onHoverChange = opts.onHoverChange || (() => {});
@@ -108,6 +142,7 @@ const Game = (() => {
       ag.socialPartner    = null;
       ag.particles        = [];
       ag.onPTO            = false;
+      initStateLog(ag);
     });
 
     const canvas = document.getElementById('game-canvas');
@@ -184,6 +219,15 @@ const Game = (() => {
 
   function enterHumanState(agent, newState) {
     const old = agent.humanState;
+
+    // ── Accumulate time spent in the outgoing state ────────────
+    if (old && agent.stateLog) {
+      const flushFrom = agent._stateLogLastFlush ?? agent.stateLogStart ?? 0;
+      const spent = gameTime - flushFrom;
+      agent.stateLog[old] = (agent.stateLog[old] || 0) + Math.max(0, spent);
+      agent._stateLogLastFlush = gameTime;
+    }
+
     if (old === HB.SOCIALIZING) breakSocialPair(agent);
     if (old === HB.PTO)         agent.onPTO = false;
     if (old === HB.WORKING)     releaseDesk(agent);
@@ -395,7 +439,26 @@ const Game = (() => {
         const hs   = ag.humanState || HB.NORMAL;
         const bhPh = HB_PHRASES[hs];
         const dpPh = IDLE_PHRASES[ag.department] || IDLE_PHRASES.finance;
-        const pool = (bhPh && Math.random() < 0.65) ? bhPh : dpPh;
+        // Per-agent phrases (CEO/VIP): pick from their personal phrase bank 50% of the time
+        const agPh  = ag.phrases;
+        let   pool;
+        if (agPh && agPh.length && Math.random() < 0.50) {
+          pool = agPh;
+        } else if (bhPh && Math.random() < 0.65) {
+          pool = bhPh;
+        } else {
+          pool = dpPh;
+        }
+        // If agent has a task and is working, occasionally announce it
+        if (ag.currentTask && (hs === HB.WORKING || hs === HB.NORMAL) && Math.random() < 0.25) {
+          const taskPhrases = [
+            `Working on: ${ag.currentTask.title} 📋`,
+            `Focused on ${ag.currentTask.title}`,
+            `${ag.currentTask.title} — on it 🎯`,
+            `${ag.currentTask.priority === 'high' ? '🔥' : '📋'} ${ag.currentTask.title}`
+          ];
+          pool = taskPhrases;
+        }
         ag.speechBubble = { text: pool[Math.floor(Math.random() * pool.length)], age: 0, maxAge: 3.5 };
       }
       setTimeout(fire, 3500 + Math.random() * 5000);
@@ -462,6 +525,96 @@ const Game = (() => {
   function getAgents()      { return agents;          }
   function setSpeed(mult)   { speedMultiplier = mult; }
 
+  // ── Environment Switching ─────────────────────────────────────
+  function switchEnvironment(envKey) {
+    // Apply new environment config (patches ROOMS, IDLE_PHRASES, DEFAULT_AGENTS etc.)
+    applyEnvironment(envKey);
+
+    // Separate custom user-added agents from default ones
+    // (custom agents: not found in any DEFAULT_AGENTS list by id)
+    const allDefaultIds = new Set([
+      ...(REGULAR_AGENTS_UNIVERSITY || []).map(a => a.id),
+      ...(REGULAR_AGENTS_STARTUP    || []).map(a => a.id),
+      ...(REGULAR_AGENTS_WALLSTREET || []).map(a => a.id),
+      ...(CEO_AGENTS                || []).map(a => a.id)
+    ]);
+    const customAgents = agents.filter(ag => !allDefaultIds.has(ag.id));
+
+    // Clear social pairs and desk state for removed agents
+    socialPairs.clear();
+    if (typeof DESK_OCCUPANCY !== 'undefined') {
+      try { DESK_OCCUPANCY.clear(); } catch(_) {}
+    }
+
+    // Build fresh agent list from new DEFAULT_AGENTS + keep custom agents
+    const freshDefaults = DEFAULT_AGENTS.map(data => {
+      const pos = randomRoomPos(data.department);
+      return {
+        ...deepClone(data),
+        x: pos.x, y: pos.y, targetX: pos.x, targetY: pos.y,
+        bobPhase: Math.random() * Math.PI * 2,
+        waitTime: Math.random() * 4,
+        humanState: HB.ARRIVING,
+        humanStateDur: randBetween(2, 5),
+        humanStateTimer: -(Math.random() * 8),
+        socialPartner: null, particles: [], onPTO: false,
+        chatHistory: data.chatHistory || [],
+        speechBubble: null, state: 'idle', walkCycle: 0, speed: 55
+      };
+    });
+
+    agents = [...freshDefaults, ...customAgents];
+    agents.forEach(ag => initStateLog(ag));
+    selectedAgent = null;
+
+    // Trigger a visible celebration effect on a few agents
+    agents.slice(0, 3).forEach(ag => {
+      setTimeout(() => {
+        if (ag && !ag.onPTO) enterHumanState(ag, HB.ARRIVING);
+      }, Math.random() * 1500);
+    });
+
+    saveCustomAgents();
+  }
+
+  // ── Task Assignment ───────────────────────────────────────────
+  function assignTask(agentId, task) {
+    const ag = agents.find(a => a.id === agentId);
+    if (!ag) return false;
+    ag.currentTask = {
+      title:       task.title       || 'New Task',
+      description: task.description || '',
+      priority:    task.priority     || 'normal', // 'low'|'normal'|'high'|'urgent'
+      assignedAt:  Date.now()
+    };
+    // Boost agent into working mode when assigned a high/urgent task
+    if (task.priority === 'high' || task.priority === 'urgent') {
+      if (ag.humanState !== HB.WORKING) enterHumanState(ag, HB.WORKING);
+    }
+    // Give a quick speech bubble acknowledgement
+    const acks = [
+      `On it! ${task.title} 🎯`,
+      `Got it — ${task.title}`,
+      `Working on ${task.title} 💪`,
+      `${task.priority === 'urgent' ? '🔥' : '✅'} ${task.title}`
+    ];
+    ag.speechBubble = { text: acks[Math.floor(Math.random() * acks.length)], age: 0, maxAge: 4 };
+    saveCustomAgents();
+    return true;
+  }
+
+  function clearTask(agentId) {
+    const ag = agents.find(a => a.id === agentId);
+    if (!ag) return;
+    ag.currentTask = null;
+    saveCustomAgents();
+  }
+
+  function getTask(agentId) {
+    const ag = agents.find(a => a.id === agentId);
+    return ag ? (ag.currentTask || null) : null;
+  }
+
   // ── Persistence ───────────────────────────────────────────────
   function saveCustomAgents() {
     const custom = agents.filter(ag => !DEFAULT_AGENTS.find(d => d.id === ag.id));
@@ -469,7 +622,8 @@ const Game = (() => {
       localStorage.setItem('ao_custom_agents', JSON.stringify(custom.map(ag => ({
         id: ag.id, name: ag.name, company: ag.company, role: ag.role,
         emoji: ag.emoji, color: ag.color, department: ag.department,
-        description: ag.description, apiConfig: ag.apiConfig
+        description: ag.description, apiConfig: ag.apiConfig,
+        currentTask: ag.currentTask || null
       }))));
     } catch (_) {}
   }
@@ -493,5 +647,5 @@ const Game = (() => {
   function deepClone(obj)       { return JSON.parse(JSON.stringify(obj)); }
   function randBetween(a, b)    { return a + Math.random() * (b - a); }
 
-  return { init, addAgent, updateAgent, removeAgent, selectAgent, deselectAll, getAgents, setSpeed, HB };
+  return { init, addAgent, updateAgent, removeAgent, selectAgent, deselectAll, getAgents, setSpeed, HB, getReport, resetReport, switchEnvironment, assignTask, clearTask, getTask };
 })();

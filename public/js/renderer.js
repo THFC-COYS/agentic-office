@@ -696,6 +696,9 @@ const Renderer = (() => {
     // Status badge
     drawStatusBadge(agent, x, y, gameTime);
 
+    // Task badge (clipboard icon above head when agent has an assigned task)
+    if (agent.currentTask) drawTaskBadge(agent, x, y, gameTime);
+
     // Thinking dots
     if (state === 'thinking') {
       for (let i = 0; i < 3; i++) {
@@ -747,6 +750,40 @@ const Renderer = (() => {
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(badge.icon, bx, by);
+    ctx.restore();
+  }
+
+  // ── Task Badge ────────────────────────────────────────────────
+  function drawTaskBadge(agent, x, y, gameTime) {
+    const task = agent.currentTask;
+    if (!task) return;
+    const PRIORITY_COLOR = { urgent: '#FF3B30', high: '#FF9F0A', normal: '#30D158', low: '#636366' };
+    const color = PRIORITY_COLOR[task.priority] || PRIORITY_COLOR.normal;
+    const pulse = 0.85 + Math.sin(gameTime * 3 + (agent.bobPhase || 0)) * 0.15;
+
+    // Position: top-left of agent circle, above the status badge
+    const bx = x - 22;
+    const by = y - 32;
+
+    ctx.save();
+    ctx.globalAlpha = pulse;
+
+    // Badge bg
+    ctx.beginPath();
+    ctx.arc(bx, by, 8, 0, Math.PI * 2);
+    ctx.fillStyle = color + '33';
+    ctx.fill();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Clipboard emoji
+    ctx.font = '9px serif';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('📋', bx, by);
+
+    ctx.globalAlpha = 1;
     ctx.restore();
   }
 

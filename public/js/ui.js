@@ -10,6 +10,21 @@ const UI = (() => {
   let els         = {};
 
   // Status display config matching game.js HB states
+  // State colors + labels for report bars
+  const STATE_META = {
+    working:     { label: 'Working',      color: '#58a6ff', icon: '🎯' },
+    normal:      { label: 'Active',       color: '#3fb950', icon: '🟢' },
+    socializing: { label: 'Socializing',  color: '#f0c040', icon: '💬' },
+    coffee:      { label: 'Coffee Break', color: '#c4913a', icon: '☕' },
+    distracted:  { label: 'Distracted',   color: '#ff9944', icon: '📱' },
+    tired:       { label: 'Tired',        color: '#9b72ff', icon: '😴' },
+    stressed:    { label: 'Stressed',     color: '#f78166', icon: '😤' },
+    celebrating: { label: 'Celebrating',  color: '#FFD700', icon: '🎉' },
+    unwell:      { label: 'Unwell',       color: '#88cc44', icon: '🤒' },
+    pto:         { label: 'OOO / PTO',    color: '#4ecdc4', icon: '🏖️' },
+    arriving:    { label: 'Arriving',     color: '#aaa',    icon: '👋' }
+  };
+
   const STATUS_DISPLAY = {
     normal:      { label: 'Active',       color: '#3fb950', icon: '🟢' },
     working:     { label: 'Deep Focus',   color: '#58a6ff', icon: '🎯' },
@@ -60,6 +75,13 @@ const UI = (() => {
     bindEvents();
     populateSettingsKeys();
     updateApiStatusDot();
+    updateEnvBadge();
+
+    // Show landing screen on very first visit (no saved env = fresh start)
+    const hasVisited = localStorage.getItem('ao_has_visited');
+    if (!hasVisited) {
+      setTimeout(() => openModal('modal-landing'), 400);
+    }
   }
 
   function q(sel) { return document.querySelector(sel); }
@@ -87,6 +109,46 @@ const UI = (() => {
     els.addAgentBtn.addEventListener('click',  () => openModal('modal-add-agent'));
     els.addAgentBtn2.addEventListener('click', () => openModal('modal-add-agent'));
     els.settingsBtn.addEventListener('click',  () => openModal('modal-settings'));
+
+    const reportBtn = q('#report-btn');
+    if (reportBtn) reportBtn.addEventListener('click', openReport);
+
+    const reportResetBtn = q('#report-reset-btn');
+    if (reportResetBtn) reportResetBtn.addEventListener('click', () => {
+      Game.resetReport();
+      openReport();
+    });
+
+    const reportCsvBtn = q('#report-csv-btn');
+    if (reportCsvBtn) reportCsvBtn.addEventListener('click', () => downloadReportCSV());
+
+    // Environment switcher
+    const envBtn = q('#env-btn');
+    if (envBtn) envBtn.addEventListener('click', () => {
+      renderLandingCards(false); // render env switcher (not first-time)
+      openModal('modal-landing');
+    });
+
+    // Share / Screenshot button
+    const shareBtn = q('#share-btn');
+    if (shareBtn) shareBtn.addEventListener('click', onShareScreenshot);
+
+    // Task modal
+    const saveTaskBtn = q('#save-task-btn');
+    if (saveTaskBtn) saveTaskBtn.addEventListener('click', onSaveTask);
+
+    const clearTaskBtn = q('#clear-task-btn');
+    if (clearTaskBtn) clearTaskBtn.addEventListener('click', onClearTask);
+
+    // Task quick-pick chips
+    document.querySelectorAll('.task-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const titleEl    = q('#task-title');
+        const priorityEl = q('#task-priority');
+        if (titleEl)    titleEl.value    = chip.dataset.title;
+        if (priorityEl) priorityEl.value = chip.dataset.priority || 'normal';
+      });
+    });
 
     document.querySelectorAll('.modal-close, [data-modal]').forEach(btn => {
       btn.addEventListener('click', e => {
@@ -133,15 +195,119 @@ const UI = (() => {
     });
   }
 
+  // ── Environment Badge ─────────────────────────────────────────
+  function updateEnvBadge() {
+    const envBadge = q('#env-badge-label');
+    if (!envBadge) return;
+    const env = getCurrentEnvDef ? getCurrentEnvDef() : null;
+    if (env) envBadge.textContent = `${env.emoji} ${env.name}`;
+  }
+
+  // ── Landing Screen / Env Picker ───────────────────────────────
+  function renderLandingCards(isFirstVisit) {
+    const container = q('#landing-env-cards');
+    if (!container) return;
+    const currentEnv = CURRENT_ENV_KEY || 'university';
+    container.innerHTML = '';
+
+    Object.values(ENVIRONMENT_DEFS).forEach(env => {
+      const card = document.createElement('div');
+      card.className = 'env-card' + (env.key === currentEnv ? ' active' : '');
+      card.style.setProperty('--env-color', env.color);
+      card.innerHTML = `
+        <div class="env-card-emoji">${env.emoji}</div>
+        <div class="env-card-name">${env.name}</div>
+        <div class="env-card-tagline">${env.tagline}</div>
+        <div class="env-card-desc">${env.desc}</div>
+        ${env.key === currentEnv ? '<div class="env-card-active-badge">✓ Active</div>' : ''}
+      `;
+      card.addEventListener('click', () => {
+        localStorage.setItem('ao_has_visited', '1');
+        closeModal('modal-landing');
+        if (env.key !== currentEnv) {
+          Game.switchEnvironment(env.key);
+          renderAgentList(Game.getAgents());
+          updateEnvBadge();
+          showToast(`${env.emoji} Switched to ${env.name}!`, env.color);
+        }
+      });
+      container.appendChild(card);
+    });
+
+    const heading = q('#landing-heading');
+    if (heading) {
+      heading.textContent = isFirstVisit
+        ? 'Choose your environment'
+        : 'Switch Environment';
+    }
+    const subheading = q('#landing-subheading');
+    if (subheading) {
+      subheading.textContent = isFirstVisit
+        ? 'Pick where your AI agents will work today. Office of Greg is always included.'
+        : 'Select a new environment. Your custom agents stay. Office of Greg always remains.';
+    }
+  }
+
+  // When landing modal opens, render cards
+  const origOpenModal = null;
+  function openModal(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (id === 'modal-landing') {
+      const isFirst = !localStorage.getItem('ao_has_visited');
+      renderLandingCards(isFirst);
+    }
+    el.classList.remove('hidden');
+  }
+
+  // ── Share Screenshot ──────────────────────────────────────────
+  function onShareScreenshot() {
+    const canvas = document.getElementById('game-canvas');
+    if (!canvas) return;
+    try {
+      canvas.toBlob(blob => {
+        if (!blob) { showToast('Screenshot failed 😢', '#f78166'); return; }
+        const url = URL.createObjectURL(blob);
+        const a   = document.createElement('a');
+        a.href     = url;
+        a.download = `agentic-office-${Date.now()}.png`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('📸 Screenshot saved!', '#3fb950');
+      });
+    } catch(e) {
+      showToast('Screenshot not available', '#f78166');
+    }
+  }
+
+  // ── Toast Notification ────────────────────────────────────────
+  function showToast(text, color = '#58a6ff') {
+    let toast = q('#ao-toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'ao-toast';
+      document.body.appendChild(toast);
+    }
+    toast.textContent = text;
+    toast.style.borderColor = color;
+    toast.style.color = color;
+    toast.classList.add('visible');
+    clearTimeout(toast._timer);
+    toast._timer = setTimeout(() => toast.classList.remove('visible'), 3000);
+  }
+
   // ── Agent List ────────────────────────────────────────────────
   function renderAgentList(agents) {
     els.agentCount.textContent = agents.length;
     els.agentList.innerHTML    = '';
 
-    const byDept = { executive: [], finance: [], sales: [] };
-    agents.forEach(ag => (byDept[ag.department] || byDept.finance).push(ag));
+    const byDept = { executive: [], finance: [], sales: [], greg: [] };
+    agents.forEach(ag => {
+      const bucket = byDept[ag.department] ? ag.department : 'finance';
+      byDept[bucket].push(ag);
+    });
 
-    ['executive', 'sales', 'finance'].forEach(dept => {
+    ['executive', 'sales', 'finance', 'greg'].forEach(dept => {
       const group = byDept[dept];
       if (!group.length) return;
 
@@ -166,6 +332,12 @@ const UI = (() => {
         card.dataset.id = ag.id;
         card.style.opacity = isPTO ? '0.5' : '1';
 
+        const TASK_PRIORITY_COLOR = { urgent: '#FF3B30', high: '#FF9F0A', normal: '#30D158', low: '#636366' };
+        const taskHtml = ag.currentTask ? `
+          <div class="agent-task-badge" style="border-color:${TASK_PRIORITY_COLOR[ag.currentTask.priority]||'#30D158'}22;background:${TASK_PRIORITY_COLOR[ag.currentTask.priority]||'#30D158'}11;color:${TASK_PRIORITY_COLOR[ag.currentTask.priority]||'#30D158'}">
+            📋 ${ag.currentTask.title}
+          </div>
+        ` : '';
         card.innerHTML = `
           <div class="agent-card-emoji" style="background:${ag.color}22;border:1px solid ${ag.color}44;${isPTO ? 'filter:grayscale(1)' : ''}">
             ${ag.emoji}
@@ -174,23 +346,34 @@ const UI = (() => {
             <div class="agent-card-name">${ag.name}</div>
             <div style="font-size:11px;color:${room.accentColor}">${ag.company}</div>
             <div style="font-size:10px;color:${status.color};margin-top:1px">${status.icon} ${status.label}</div>
+            ${taskHtml}
           </div>
           <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
             <button class="edit-btn" data-id="${ag.id}" title="Rename / Edit" style="
               background:none;border:1px solid #30363d;color:#8b949e;
               border-radius:5px;padding:2px 7px;font-size:11px;cursor:pointer;
             ">✏️</button>
+            <button class="task-btn" data-id="${ag.id}" title="Assign Task" style="
+              background:none;border:1px solid #30363d;color:${ag.currentTask ? '#FF9F0A' : '#8b949e'};
+              border-radius:5px;padding:2px 7px;font-size:11px;cursor:pointer;
+            ">${ag.currentTask ? '📋' : '＋'}</button>
           </div>
         `;
 
         card.addEventListener('click', e => {
           if (e.target.closest('.edit-btn')) return;
+          if (e.target.closest('.task-btn')) return;
           if (!isPTO) openChat(ag);
         });
 
         card.querySelector('.edit-btn').addEventListener('click', e => {
           e.stopPropagation();
           openEditModal(ag);
+        });
+
+        card.querySelector('.task-btn').addEventListener('click', e => {
+          e.stopPropagation();
+          openTaskModal(ag);
         });
 
         els.agentList.appendChild(card);
@@ -267,6 +450,48 @@ const UI = (() => {
     }
   }
 
+  // ── Task Modal ────────────────────────────────────────────────
+  let _taskAgentId = null;
+
+  function openTaskModal(agent) {
+    _taskAgentId = agent.id;
+    const task = agent.currentTask;
+    const setVal = (id, val) => { const el = q(id); if (el) el.value = val || ''; };
+    setVal('#task-title',    task?.title || '');
+    setVal('#task-desc',     task?.description || '');
+    setVal('#task-priority', task?.priority || 'normal');
+    setVal('#task-agent-name', agent.name);
+
+    const agLabel = q('#task-modal-agent');
+    if (agLabel) agLabel.textContent = `${agent.emoji} ${agent.name}`;
+
+    const clearBtn = q('#clear-task-btn');
+    if (clearBtn) clearBtn.style.display = task ? 'inline-flex' : 'none';
+
+    openModal('modal-assign-task');
+  }
+
+  function onSaveTask() {
+    if (!_taskAgentId) return;
+    const title    = q('#task-title')?.value.trim();
+    const desc     = q('#task-desc')?.value.trim();
+    const priority = q('#task-priority')?.value || 'normal';
+    if (!title) { highlight(q('#task-title')); return; }
+
+    Game.assignTask(_taskAgentId, { title, description: desc, priority });
+    closeModal('modal-assign-task');
+    renderAgentList(Game.getAgents());
+    showToast(`📋 Task assigned!`, '#30D158');
+  }
+
+  function onClearTask() {
+    if (!_taskAgentId) return;
+    Game.clearTask(_taskAgentId);
+    closeModal('modal-assign-task');
+    renderAgentList(Game.getAgents());
+    showToast('Task cleared', '#636366');
+  }
+
   // ── Chat Panel ────────────────────────────────────────────────
   function openChat(agent) {
     activeAgent = agent;
@@ -280,10 +505,25 @@ const UI = (() => {
       : 'NO API KEY';
     els.chatApiBadge.className = `api-badge ${ok ? 'configured' : 'unconfigured'}`;
 
+    // Show assign-task button in chat header
+    let chatTaskBtn = q('#chat-assign-task-btn');
+    if (!chatTaskBtn) {
+      chatTaskBtn = document.createElement('button');
+      chatTaskBtn.id = 'chat-assign-task-btn';
+      chatTaskBtn.className = 'btn btn-ghost btn-sm';
+      chatTaskBtn.title = 'Assign Task';
+      q('#panel-chat .panel-header')?.appendChild(chatTaskBtn);
+    }
+    chatTaskBtn.textContent = agent.currentTask ? `📋 ${agent.currentTask.title}` : '＋ Task';
+    chatTaskBtn.onclick = () => openTaskModal(agent);
+
     els.chatMessages.innerHTML = '';
     if (!agent.chatHistory?.length) {
       addSystemMessage(`Chat with ${agent.name} — ${agent.role}`);
       if (agent.description) addSystemMessage(agent.description);
+      if (agent.currentTask) {
+        addSystemMessage(`📋 Current task: ${agent.currentTask.title}${agent.currentTask.description ? ' — ' + agent.currentTask.description : ''}`);
+      }
       if (!ok) addSystemMessage('⚠ No API key — add one in Settings ⚙ or edit this agent.');
     } else {
       agent.chatHistory.forEach(m => addMessage(m.role, m.content, false));
@@ -359,7 +599,13 @@ const UI = (() => {
 
     const typingEl = addTypingIndicator();
     try {
-      const reply = await AgentAPI.callAgent(activeAgent, text);
+      // Inject current task into the user message context if agent has one
+      let contextualText = text;
+      if (activeAgent.currentTask) {
+        const t = activeAgent.currentTask;
+        contextualText = `[Context: I am currently assigned the task "${t.title}"${t.description ? ': ' + t.description : ''}. Priority: ${t.priority}.]\n\n${text}`;
+      }
+      const reply = await AgentAPI.callAgent(activeAgent, contextualText);
       typingEl.remove();
       addMessage('agent', reply);
       const snip = reply.slice(0, 40) + (reply.length > 40 ? '…' : '');
@@ -474,8 +720,7 @@ const UI = (() => {
   }
 
   // ── Modal Helpers ─────────────────────────────────────────────
-  function openModal(id)  { const el = document.getElementById(id); if (el) el.classList.remove('hidden'); }
-  function closeModal(id) { const el = document.getElementById(id); if (el) el.classList.add('hidden');    }
+  function closeModal(id) { const el = document.getElementById(id); if (el) el.classList.add('hidden'); }
 
   // ── Utilities ─────────────────────────────────────────────────
   function highlight(el) {
@@ -494,6 +739,136 @@ const UI = (() => {
 
   function escapeHtml(str) {
     return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Report ────────────────────────────────────────────────────
+  let _lastReport = null;
+
+  function openReport() {
+    _lastReport = Game.getReport();
+    const body  = q('#report-body');
+    if (!body) return;
+    body.innerHTML = renderReportHTML(_lastReport);
+    openModal('modal-report');
+  }
+
+  function fmtSec(s) {
+    s = Math.round(s);
+    if (s < 60)   return `${s}s`;
+    if (s < 3600) return `${Math.floor(s/60)}m ${s%60}s`;
+    return `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m`;
+  }
+
+  function fmtWall(ms) {
+    const s = Math.round(ms / 1000);
+    if (s < 60)   return `${s}s`;
+    if (s < 3600) return `${Math.floor(s/60)}m`;
+    return `${Math.floor(s/3600)}h ${Math.floor((s%3600)/60)}m`;
+  }
+
+  function renderReportHTML(report) {
+    // Group agents by department
+    const depts = ['greg','executive','sales','finance'];
+    const byDept = {};
+    depts.forEach(d => { byDept[d] = []; });
+    report.agents.forEach(ag => {
+      const d = byDept[ag.department] ? ag.department : 'finance';
+      byDept[d].push(ag);
+    });
+
+    // Find top performers across all agents
+    const allAgents = report.agents;
+    let topFocus = allAgents[0], topSocial = allAgents[0];
+    allAgents.forEach(ag => {
+      const workPct  = (ag.states.working  || 0) / ag.totalGameSec;
+      const topWPct  = (topFocus.states.working  || 0) / topFocus.totalGameSec;
+      const socPct   = (ag.states.socializing || 0) / ag.totalGameSec;
+      const topSPct  = (topSocial.states.socializing || 0) / topSocial.totalGameSec;
+      if (workPct > topWPct) topFocus  = ag;
+      if (socPct  > topSPct) topSocial = ag;
+    });
+
+    const focusPct = Math.round(((topFocus.states.working || 0) / topFocus.totalGameSec) * 100);
+    const socPct   = Math.round(((topSocial.states.socializing || 0) / topSocial.totalGameSec) * 100);
+
+    let html = `
+      <div style="display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap;">
+        <div class="report-stat-card">🕐 Session time<br><b>${fmtWall(report.wallMs)}</b></div>
+        <div class="report-stat-card">🤖 Agents<br><b>${allAgents.length}</b></div>
+        <div class="report-stat-card">🎯 Most focused<br><b>${topFocus.emoji} ${topFocus.name}</b><small>${focusPct}% working</small></div>
+        <div class="report-stat-card">💬 Most social<br><b>${topSocial.emoji} ${topSocial.name}</b><small>${socPct}% socializing</small></div>
+      </div>
+      <div style="font-size:10px;color:#555;margin-bottom:14px;">Generated ${report.generatedAt} &nbsp;·&nbsp; Game time shown as bars; wall clock shown in parens</div>
+    `;
+
+    // Legend row
+    html += `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px;">`;
+    Object.entries(STATE_META).forEach(([k, m]) => {
+      html += `<span style="font-size:10px;background:${m.color}22;border:1px solid ${m.color}55;color:${m.color};padding:2px 7px;border-radius:10px;">${m.icon} ${m.label}</span>`;
+    });
+    html += `</div>`;
+
+    // Per-dept sections
+    depts.forEach(dept => {
+      const group = byDept[dept];
+      if (!group.length) return;
+      const room = ROOMS[dept];
+      html += `<div style="font-size:10px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:${room?.accentColor || '#aaa'};margin:16px 0 8px;">${room?.name || dept}</div>`;
+
+      group.forEach(ag => {
+        const total = ag.totalGameSec || 1;
+        // Build bar segments in priority order
+        const stateOrder = ['working','normal','socializing','coffee','distracted','tired','stressed','celebrating','unwell','pto','arriving'];
+        let bars = '';
+        let legendParts = [];
+        stateOrder.forEach(s => {
+          const sec = ag.states[s] || 0;
+          if (sec < 0.5) return;
+          const pct = Math.max(0.5, (sec / total) * 100);
+          const m   = STATE_META[s];
+          bars += `<div title="${m.label}: ${fmtSec(sec)} (${Math.round(pct)}%)" style="width:${pct}%;background:${m.color};min-width:3px;"></div>`;
+          if (pct > 2) legendParts.push(`<span style="color:${m.color}">${m.icon} ${Math.round(pct)}%</span>`);
+        });
+
+        html += `
+          <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #1a1f26;">
+            <div style="width:180px;flex-shrink:0;display:flex;align-items:center;gap:7px;">
+              <span style="font-size:18px">${ag.emoji}</span>
+              <div>
+                <div style="font-size:12px;font-weight:600;color:#e6edf3">${ag.name}</div>
+                <div style="font-size:10px;color:#768390">${ag.company}</div>
+              </div>
+            </div>
+            <div style="flex:1;min-width:0;">
+              <div style="display:flex;height:14px;border-radius:4px;overflow:hidden;background:#0d1117;gap:1px;">${bars}</div>
+              <div style="font-size:10px;margin-top:4px;display:flex;flex-wrap:wrap;gap:6px;">${legendParts.join('')}</div>
+            </div>
+            <div style="width:54px;flex-shrink:0;text-align:right;font-size:10px;color:#555">${fmtSec(total)}</div>
+          </div>`;
+      });
+    });
+
+    return html;
+  }
+
+  function downloadReportCSV() {
+    const report = _lastReport || Game.getReport();
+    const stateOrder = ['working','normal','socializing','coffee','distracted','tired','stressed','celebrating','unwell','pto','arriving'];
+    const header = ['Name','Company','Role','Department','Total Game Sec', ...stateOrder.map(s => `${STATE_META[s].label} (sec)`), ...stateOrder.map(s => `${STATE_META[s].label} (%)`)];
+    const rows = report.agents.map(ag => {
+      const total = ag.totalGameSec || 1;
+      const secs  = stateOrder.map(s => (ag.states[s] || 0).toFixed(1));
+      const pcts  = stateOrder.map(s => (((ag.states[s] || 0) / total) * 100).toFixed(1));
+      return [ag.name, ag.company, ag.role, ag.department, total.toFixed(1), ...secs, ...pcts];
+    });
+    const csv  = [header, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `agentic-office-report-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   return { init, renderAgentList, openChat, closeChat, showTooltip };

@@ -17,7 +17,12 @@
     </div>
     <div class="topbar-right">
       <div id="api-status-indicator" class="status-dot unconfigured" title="API not configured">●</div>
+      <button class="btn btn-env" id="env-btn" title="Switch Environment">
+        <span id="env-badge-label">🎓 University Campus</span>
+      </button>
       <button class="btn btn-primary" id="add-agent-btn">＋ Add Agent</button>
+      <button class="btn btn-ghost" id="share-btn" title="Screenshot the office">📸</button>
+      <button class="btn btn-ghost" id="report-btn">📊 Report</button>
       <button class="btn btn-ghost" id="settings-btn">⚙ Settings</button>
     </div>
   </header>
@@ -264,6 +269,92 @@
       <div class="modal-footer">
         <button class="btn btn-ghost" data-modal="modal-settings">Cancel</button>
         <button class="btn btn-primary" id="save-settings-btn">Save Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ REPORT MODAL -->
+  <div id="modal-report" class="modal-overlay hidden">
+    <div class="modal modal-wide">
+      <div class="modal-header">
+        <h2>📊 Agent Activity Report</h2>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button class="btn btn-ghost btn-sm" id="report-reset-btn">🔄 Reset Clock</button>
+          <button class="btn btn-ghost btn-sm" id="report-csv-btn">⬇ Download CSV</button>
+          <button class="modal-close" data-modal="modal-report">✕</button>
+        </div>
+      </div>
+      <div class="modal-body" id="report-body" style="overflow-y:auto;max-height:72vh;">
+        <!-- populated by ui.js -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ LANDING / ENV MODAL -->
+  <div id="modal-landing" class="modal-overlay hidden">
+    <div class="modal modal-landing-inner">
+      <div class="modal-header">
+        <div>
+          <h2 id="landing-heading">Choose your environment</h2>
+          <p id="landing-subheading" style="font-size:12px;color:#768390;margin:4px 0 0;">
+            Pick where your AI agents will work today. Office of Greg is always included.
+          </p>
+        </div>
+        <button class="modal-close" data-modal="modal-landing">✕</button>
+      </div>
+      <div class="modal-body" style="padding-top:8px;">
+        <div id="landing-env-cards" class="env-cards-grid"></div>
+        <div class="landing-footer">
+          <div class="landing-note">🏢 <b>Office of Greg</b> with Jensen, Satya, Elon, Sundar, Tim &amp; Steve is always present — regardless of environment.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ ASSIGN TASK MODAL -->
+  <div id="modal-assign-task" class="modal-overlay hidden">
+    <div class="modal modal-task">
+      <div class="modal-header">
+        <div>
+          <h2>📋 Assign Task</h2>
+          <div id="task-modal-agent" style="font-size:13px;color:#768390;margin-top:2px;"></div>
+        </div>
+        <button class="modal-close" data-modal="modal-assign-task">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <label>Task Title *</label>
+          <input type="text" id="task-title" placeholder="e.g. Redesign onboarding UX" />
+        </div>
+        <div class="form-row">
+          <label>Description <span class="hint">(optional context)</span></label>
+          <textarea id="task-desc" rows="3" placeholder="Describe what you need this agent to focus on..."></textarea>
+        </div>
+        <div class="form-row">
+          <label>Priority</label>
+          <select id="task-priority">
+            <option value="low">🔵 Low</option>
+            <option value="normal" selected>🟢 Normal</option>
+            <option value="high">🟡 High</option>
+            <option value="urgent">🔴 Urgent</option>
+          </select>
+        </div>
+        <div class="task-examples">
+          <div class="hint" style="margin-bottom:6px;">Quick examples:</div>
+          <div class="task-example-chips">
+            <button class="task-chip" data-title="Redesign onboarding UX" data-priority="high">Redesign onboarding UX</button>
+            <button class="task-chip" data-title="Analyze Q3 revenue data" data-priority="normal">Analyze Q3 revenue data</button>
+            <button class="task-chip" data-title="Write investor update" data-priority="high">Write investor update</button>
+            <button class="task-chip" data-title="Ship v2.0 by Friday" data-priority="urgent">Ship v2.0 by Friday</button>
+            <button class="task-chip" data-title="Reduce churn by 20%" data-priority="high">Reduce churn by 20%</button>
+            <button class="task-chip" data-title="Review security audit" data-priority="normal">Review security audit</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="clear-task-btn" style="color:#f78166;display:none;">✕ Clear Task</button>
+        <button class="btn btn-ghost" data-modal="modal-assign-task">Cancel</button>
+        <button class="btn btn-primary" id="save-task-btn">Assign Task 📋</button>
       </div>
     </div>
   </div>
